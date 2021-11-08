@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import http from 'http';
 import net from 'net';
 import os from 'os';
 import stream from 'stream';
@@ -94,7 +95,7 @@ export class WebServer {
     const launchTimeout = this.config.timeout || 60 * 1000;
     const cancellationToken = { canceled: false };
     const { timedOut } = (await Promise.race([
-      raceAgainstTimeout(() => waitForSocket(this.config.port, 100, cancellationToken), launchTimeout),
+      raceAgainstTimeout(() => waitForSocketOrURL(this.config.port, this.config.url, 100, cancellationToken), launchTimeout),
       this._processExitedPromise,
     ]));
     cancellationToken.canceled = true;
@@ -121,11 +122,32 @@ async function isPortUsed(port: number): Promise<boolean> {
   return await innerIsPortUsed('127.0.0.1') || await innerIsPortUsed('::1');
 }
 
-async function waitForSocket(port: number, delay: number, cancellationToken: { canceled: boolean }) {
+async function isURLAvailable(url: URL) {
+  return new Promise<boolean>(resolve => {
+    http.get(url, res => {
+      res.resume();
+      const statusCode = res.statusCode ?? 0;
+      resolve(statusCode >= 200 && statusCode < 300);
+    }).on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
+async function waitFor(waitFn: () => Promise<boolean>, delay: number, cancellationToken: { canceled: boolean }) {
   while (!cancellationToken.canceled) {
-    const connected = await isPortUsed(port);
+    const connected = await waitFn();
     if (connected)
       return;
     await new Promise(x => setTimeout(x, delay));
+  }
+}
+
+async function waitForSocketOrURL(port: number, path: string | undefined, delay: number, cancellationToken: { canceled: boolean }) {
+  if (path) {
+    const url = new URL(path, `http://localhost:${port}`);
+    await waitFor(() => isURLAvailable(url), delay, cancellationToken);
+  } else {
+    await waitFor(() => isPortUsed(port), delay, cancellationToken);
   }
 }

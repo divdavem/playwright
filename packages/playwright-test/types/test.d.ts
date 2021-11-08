@@ -358,6 +358,11 @@ export type WebServerConfig = {
    */
   port: number,
   /**
+   * The url on your http server that is expected to return a 2xx status code when the server is ready to accept connections.
+   * If the url is not specified, only the port is checked.
+   */
+  url?: string,
+  /**
    * How long to wait for the process to start up and be available in milliseconds. Defaults to 60000.
    */
   timeout?: number,
